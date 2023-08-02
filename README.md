@@ -57,3 +57,41 @@ This example is written in a more functional style (a bit inspired by Rust) with
 This is because it does not seem that we're able to wrap an import module statement in a try-catch block. The only way to do this is to rely on dynamic imports, which also feels a bit messy.
 
 Therefore this approach ensures that every async module import is typed as a `Result<T>` which then _must_ be handled by the caller. This forces developers to think through and handle failure cases for these async imports.
+
+### Alternatives
+
+If any of your top-level await calls are not properly guarded by try-catch blocks, you'll receive an unhandled Promise rejection along the lines of:
+```
+file:///js/top-level-await/build/utils.js:8
+        throw new Error(descriptor);
+              ^
+
+Error: Secret retrieval failed for readWriteUrl
+    at simulateRandomFailure (file:///js/top-level-await/build/utils.js:8:15)
+    at Object.getSecret (file:///js/top-level-await/build/secrets.js:7:9)
+    at async file:///js/top-level-await/build/prisma.js:11:22
+```
+
+and the process will exit.
+
+This is due to the fact that the `import` statement cannot be wrapped in a try-catch. However, this fact presents an alternative approach—dynamic imports:
+```ts
+
+import { getErrorMessage } from "./utils.js";
+
+try {
+  const { resolvedPrisma } = await import("./prisma.js");
+  const { result: clients } = resolvedPrisma;
+
+  console.log("prisma.write is", clients.write);
+  console.log("prisma.read is", clients.read);
+} catch (error) {
+  console.log("importing prisma failed:", getErrorMessage(error));
+}
+
+export {};
+```
+
+While this approach is feasible, dynamic imports are a different approach and are shifting the process of loading modules into a later phase of execution alongside the application code in the module itself—which could produce issues for developers expecting the same behavior as static import statements.
+
+There is also some indication that Typescript typing can get a bit tricky with dynamic imports, however this would need to be validated before being certain that it is a potential issue.
